@@ -49,6 +49,8 @@ function jev() {
       ...(baseURL ? { baseURL } : {}),
       ...(model ? { defaultModel: model } : {}),
       timeout: 20_000,
+      // Providers return 503 "temporarily unavailable" in bursts; the SDK backs off 0.5→5 s between tries.
+      retry: { maxRetries: 4 },
     });
   }
   return client;

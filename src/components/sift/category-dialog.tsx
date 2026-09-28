@@ -100,7 +100,7 @@ export function CategoryDialog({ open, onOpenChange, initial, existing, busy, on
           </Button>
           <Button type="submit" form="category-form" disabled={busy || !name.trim()}>
             {busy && <Loader2 className="animate-spin" />}
-            {busy ? "Sorting inbox…" : editing ? "Save & re-sort" : "Create & sort"}
+            {busy ? "Saving…" : editing ? "Save & re-sort" : "Create & sort"}
           </Button>
         </DialogFooter>
       </DialogContent>

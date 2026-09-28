@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { ClientState, Settings } from "@/lib/types";
 
@@ -97,10 +97,30 @@ export function useSift() {
     };
   }, [refresh]);
 
+  /** True while this tab is running or waiting on a sync, so repeat clicks don't start a second one. */
+  const syncing = useRef(false);
+
+  /** Another tab or request already holds the sync: show progress and poll until it finishes, then load its result. */
+  const joinRunningSync = useCallback(async () => {
+    setProgress({ stage: "fetch", message: "Syncing… (already running)" });
+    const deadline = Date.now() + 7 * 60_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const next = await json<ClientState>(await fetch("/api/state"));
+      if (!next.syncing) {
+        setState(next);
+        return;
+      }
+    }
+  }, []);
+
   const sync = useCallback(async () => {
+    if (syncing.current) return;
+    syncing.current = true;
     setProgress({ stage: "fetch", message: "Fetching from Gmail…" });
     try {
       const res = await fetch("/api/sync", { method: "POST", body: "{}" });
+      if (res.status === 409) return await joinRunningSync();
       if (!res.ok) await json(res);
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
@@ -122,9 +142,24 @@ export function useSift() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
+      syncing.current = false;
       setProgress(null);
     }
-  }, []);
+  }, [joinRunningSync]);
+
+  // Opened (or reloaded) while a sync is running elsewhere: show it and pick up its result.
+  const joinedOnLoad = useRef(false);
+  useEffect(() => {
+    if (!state?.syncing || joinedOnLoad.current || syncing.current) return;
+    joinedOnLoad.current = true;
+    syncing.current = true;
+    joinRunningSync()
+      .catch(() => {})
+      .finally(() => {
+        syncing.current = false;
+        setProgress(null);
+      });
+  }, [state?.syncing, joinRunningSync]);
 
   const undo = useCallback(
     () =>
@@ -210,6 +245,36 @@ export function useSift() {
     [guard],
   );
 
+  /**
+   * Re-sorts the inbox after a category change, in the background: the dialog has already closed.
+   * Changes made while it runs queue one more pass (the server reads the categories as they are then).
+   */
+  const resortRunning = useRef(false);
+  const resortAgain = useRef(false);
+  const resort = useCallback(async (focus?: { id: string; name: string }) => {
+    if (resortRunning.current) {
+      resortAgain.current = true;
+      return;
+    }
+    resortRunning.current = true;
+    const toastId = toast.loading(focus ? `Jev is sorting your inbox into ${focus.name}…` : "Jev is re-sorting your inbox…");
+    try {
+      let r: ClientState & { notice?: string };
+      do {
+        resortAgain.current = false;
+        r = await json<ClientState & { notice?: string }>(await fetch("/api/categories/resort", { method: "POST" }));
+        setState(r);
+      } while (resortAgain.current);
+      const filed = focus && r.categories.some((c) => c.id === focus.id) ? r.emails.filter((e) => e.analysis?.category === focus.id).length : null;
+      toast.success(filed === null ? "Inbox re-sorted" : `Filed ${filed} ${filed === 1 ? "email" : "emails"} in ${focus!.name}`, { id: toastId });
+      if (r.notice) toast.warning(r.notice);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e), { id: toastId, description: "The next sync finishes sorting." });
+    } finally {
+      resortRunning.current = false;
+    }
+  }, []);
+
   return {
     state,
     progress,
@@ -242,10 +307,23 @@ export function useSift() {
         if (!r) refresh();
       });
     },
-    addCategory: (name: string, description: string) => post("category", "/api/categories", { name, description }),
-    editCategory: (id: string, name: string, description: string) =>
-      post("category", "/api/categories", { id, name, description }, "PATCH"),
-    deleteCategory: (id: string) => post("category", `/api/categories?id=${id}`, undefined, "DELETE"),
+    /** Saves right away (the dialog closes), then sorts in the background. */
+    addCategory: async (name: string, description: string) => {
+      const r = await post("category", "/api/categories", { name, description });
+      const created = r?.categories.at(-1);
+      if (created) void resort({ id: created.id, name: created.name });
+      return r;
+    },
+    editCategory: async (id: string, name: string, description: string) => {
+      const r = await post("category", "/api/categories", { id, name, description }, "PATCH");
+      if (r) void resort({ id, name });
+      return r;
+    },
+    deleteCategory: async (id: string) => {
+      const r = await post("category", `/api/categories?id=${id}`, undefined, "DELETE");
+      if (r) void resort();
+      return r;
+    },
     pushToGmail: (id: string) =>
       guard("gmail", async () => {
         const r = await json<{ labeled: number; state: ClientState }>(

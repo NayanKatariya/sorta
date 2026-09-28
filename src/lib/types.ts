@@ -124,6 +124,8 @@ export type Store = {
   settings: Settings;
   lastSweep: SweepRecord | null;
   lastSyncAt: string | null;
+  /** A sync is running for this user right now (in any tab or on any server instance). */
+  syncing: boolean;
   stats: { totalSwept: number };
   /** When the first-run walkthrough was finished; null shows it. */
   onboardedAt: string | null;

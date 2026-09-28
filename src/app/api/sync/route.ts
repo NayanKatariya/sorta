@@ -9,7 +9,9 @@ import {
   readAnalysis,
   readCategories,
   readComposio,
+  acquireSyncLock,
   readSettings,
+  releaseSyncLock,
   upsertAnalysis,
   upsertEmails,
   writeSettings,
@@ -20,9 +22,6 @@ import type { Email } from "@/lib/types";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-/** One sync per user at a time; a second click joins nothing and is refused. */
-const running = new Set<string>();
-
 /** Streams NDJSON progress events: fetch → analyze → done (with full state). */
 export async function POST() {
   let ctx: Ctx;
@@ -31,8 +30,14 @@ export async function POST() {
   } catch (err) {
     return Response.json({ error: errorMessage(err) }, { status: 401 });
   }
-  if (running.has(ctx.userId)) return Response.json({ error: "A sync is already running." }, { status: 409 });
-  running.add(ctx.userId);
+  // One sync per user at a time, across tabs and server instances. The client treats 409 as "join the running one".
+  let lock: string | null;
+  try {
+    lock = await acquireSyncLock(ctx);
+  } catch (err) {
+    return Response.json({ error: errorMessage(err) }, { status: 502 });
+  }
+  if (!lock) return Response.json({ error: "A sync is already running.", syncing: true }, { status: 409 });
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -84,7 +89,7 @@ export async function POST() {
         console.error("[sync] failed", err);
         send({ stage: "error", message: errorMessage(err) });
       } finally {
-        running.delete(ctx.userId);
+        await releaseSyncLock(ctx, lock).catch((err) => console.error("[sync] releasing lock failed", err));
         controller.close();
       }
     },

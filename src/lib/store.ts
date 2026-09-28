@@ -45,6 +45,7 @@ type StateRow = {
   protected_senders: string[];
   last_sweep: SweepRecord | null;
   last_sync_at: string | null;
+  sync_started_at: string | null;
   total_swept: number;
   onboarded_at: string | null;
 };
@@ -164,7 +165,7 @@ const fromAnalysis = (userId: string, emailId: string, a: Analysis) => ({
 
 /** The user's settings row, created with defaults on first use. */
 async function stateRow({ db, userId }: Ctx): Promise<StateRow> {
-  const cols = "sweep_kinds, threshold, include_spam_folder, fetch_limit, protected_senders, last_sweep, last_sync_at, total_swept, onboarded_at";
+  const cols = "sweep_kinds, threshold, include_spam_folder, fetch_limit, protected_senders, last_sweep, last_sync_at, sync_started_at, total_swept, onboarded_at";
   const found = check(await db.from("user_state").select(cols).eq("user_id", userId).maybeSingle(), "reading settings");
   if (found) return found as StateRow;
   const created = await db.from("user_state").upsert({ user_id: userId }, { onConflict: "user_id", ignoreDuplicates: true });
@@ -269,6 +270,7 @@ export async function readStore(ctx: Ctx): Promise<Store> {
     settings: settingsOf(row),
     lastSweep: row.last_sweep,
     lastSyncAt: row.last_sync_at,
+    syncing: syncLockHeld(row.sync_started_at),
     stats: { totalSwept: row.total_swept },
     onboardedAt: row.onboarded_at,
   };
@@ -279,6 +281,35 @@ export async function readStore(ctx: Ctx): Promise<Store> {
 export async function writeSettings({ db, userId }: Ctx, patch: Partial<{ [K in keyof StateRow]: StateRow[K] }>) {
   await stateRow({ db, userId });
   check(await db.from("user_state").update(patch).eq("user_id", userId), "saving settings");
+}
+
+/** A sync can't outlive the function's 300 s limit; a lock older than this was left by a run that got killed. */
+const SYNC_LOCK_MS = 6 * 60_000;
+const syncLockHeld = (startedAt: string | null) => Boolean(startedAt && Date.now() - Date.parse(startedAt) < SYNC_LOCK_MS);
+
+/**
+ * Takes the user's sync lock in one atomic UPDATE, so two tabs, two clicks or two server instances can't both
+ * sync. Returns the lock token (its start time) or null when a live sync already holds it.
+ */
+export async function acquireSyncLock(ctx: Ctx): Promise<string | null> {
+  await stateRow(ctx);
+  const now = new Date().toISOString();
+  const staleBefore = new Date(Date.now() - SYNC_LOCK_MS).toISOString();
+  const rows = check(
+    await ctx.db
+      .from("user_state")
+      .update({ sync_started_at: now })
+      .eq("user_id", ctx.userId)
+      .or(`sync_started_at.is.null,sync_started_at.lt."${staleBefore}"`)
+      .select("user_id"),
+    "starting sync",
+  );
+  return rows?.length ? now : null;
+}
+
+/** Clears the lock, but only if it's still ours (a stale-lock takeover may have replaced it). */
+export async function releaseSyncLock(ctx: Ctx, token: string) {
+  check(await ctx.db.from("user_state").update({ sync_started_at: null }).eq("user_id", ctx.userId).eq("sync_started_at", token), "finishing sync");
 }
 
 export async function readProtectedSenders(ctx: Ctx) {
