@@ -26,6 +26,7 @@ export function toClientState(s: Store, userId: string): ClientState {
     settings: s.settings,
     lastSweep: s.lastSweep,
     lastSyncAt: s.lastSyncAt,
+    syncing: s.syncing,
     stats: s.stats,
     onboardedAt: s.onboardedAt,
     emails,
