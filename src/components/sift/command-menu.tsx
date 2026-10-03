@@ -5,6 +5,8 @@ import {
   Inbox,
   KeyRound,
   Moon,
+  Pencil,
+  Plug,
   Plus,
   RefreshCw,
   SlidersHorizontal,
@@ -41,7 +43,10 @@ type Props = {
   onSweep: () => void;
   onUndo: () => void;
   onNewCategory: () => void;
+  onCompose: () => void;
   onRules: () => void;
+  onSending: () => void;
+  onAgents: () => void;
   onAskJev: (q: string) => void;
 };
 
@@ -99,12 +104,22 @@ export function CommandMenu({
                 <Undo2 /> Undo last sweep
               </CommandItem>
             )}
+            <CommandItem onSelect={run(on.onCompose)}>
+              <Pencil /> Compose email
+              <CommandShortcut>C</CommandShortcut>
+            </CommandItem>
             <CommandItem onSelect={run(on.onNewCategory)}>
               <Plus /> New category
-              <CommandShortcut>C</CommandShortcut>
+              <CommandShortcut>⇧N</CommandShortcut>
             </CommandItem>
             <CommandItem onSelect={run(on.onRules)}>
               <SlidersHorizontal /> Sweep rules
+            </CommandItem>
+            <CommandItem value="sending settings default from cc bcc signature" onSelect={run(on.onSending)}>
+              <Pencil /> Sending defaults
+            </CommandItem>
+            <CommandItem value="ai agents mcp tokens claude codex cursor" onSelect={run(on.onAgents)}>
+              <Plug /> Connect AI agents (MCP)
             </CommandItem>
             <CommandItem
               onSelect={run(() =>

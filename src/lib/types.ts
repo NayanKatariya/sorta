@@ -107,6 +107,13 @@ export type Settings = {
   includeSpamFolder: boolean;
   /** Newest inbox emails fetched per account on each sync (spam gets half). */
   fetchLimit: number;
+  /** Account id new mail is sent from, or null for the first enabled mailbox. */
+  defaultFromAccount: string | null;
+  /** Added as CC / BCC on every send (editable per message). */
+  defaultCc: string[];
+  defaultBcc: string[];
+  /** Plain text appended to every send; empty for none. */
+  signature: string;
 };
 
 export type SweepRecord = {

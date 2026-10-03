@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Moon, PanelLeft, RefreshCw, Search, Sparkles, Sun, Trash2, X } from "lucide-react";
+import { Loader2, Moon, PanelLeft, Pencil, RefreshCw, Search, Sparkles, Sun, Trash2, X } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import type { ClientState } from "@/lib/types";
@@ -24,6 +24,7 @@ type HeaderProps = {
   onSync: () => void;
   onSweep: () => void;
   onToggleSidebar: () => void;
+  onCompose: () => void;
 };
 
 export function Header({ searchRef, ...p }: HeaderProps) {
@@ -82,6 +83,9 @@ export function Header({ searchRef, ...p }: HeaderProps) {
           "never synced"
         )}
       </span>
+      <Button variant="outline" size="sm" onClick={p.onCompose} aria-label="Compose a new email (C)">
+        <Pencil /> <span className="max-sm:hidden">compose</span>
+      </Button>
       <Button variant="ghost" size="sm" onClick={p.onSync} disabled={!!p.progress} className="text-muted-foreground">
         <RefreshCw /> <span className="max-sm:hidden">sync</span>
       </Button>
@@ -162,17 +166,19 @@ export function Tabs({
   );
 }
 
-export function StatusBar({ onCommand, onToggleSidebar, onNewCategory, onRules }: { onCommand: () => void; onToggleSidebar: () => void; onNewCategory: () => void; onRules: () => void }) {
+export function StatusBar({ onCommand, onToggleSidebar, onNewCategory, onCompose, onRules }: { onCommand: () => void; onToggleSidebar: () => void; onNewCategory: () => void; onCompose: () => void; onRules: () => void }) {
   return (
     <footer className="flex h-7 shrink-0 items-center gap-4 border-t px-2 text-muted-foreground max-md:hidden">
       <Hint k="⌘K" label="Search" onClick={onCommand} />
       <Hint k="⌘\" label="Hide sidebar" onClick={onToggleSidebar} />
+      <Hint k="C" label="Compose" onClick={onCompose} />
       <Hint k="⇧N" label="New category" onClick={onNewCategory} />
       <span className="ml-auto" />
       <Hint k="1–7" label="Filter" />
       <Hint k="⌥↕" label="Switch category" />
       <Hint k="J K" label="Navigate" />
       <Hint k="E" label="Trash" />
+      <Hint k="R" label="Reply" />
       <Hint k="U" label="Read" />
       <Hint k="V" label="View" />
       <Hint k="," label="Rules" onClick={onRules} />

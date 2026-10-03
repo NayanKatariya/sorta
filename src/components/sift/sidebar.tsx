@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { KeyRound, LogOut, MoreHorizontal, Pencil, Plus, Settings2, Trash2, Unplug, Upload } from "lucide-react";
+import { KeyRound, LogOut, MoreHorizontal, Pencil, Plug, Plus, Settings2, Trash2, Unplug, Upload } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +25,9 @@ type Props = {
   onCollection: (c: Collection) => void;
   onAccount: (id: string) => void;
   onNewCategory: () => void;
+  onCompose: () => void;
+  /** Opens settings on the AI agents (MCP) tab. */
+  onAgents: () => void;
   onEditCategory: (c: Category) => void;
   onDeleteCategory: (c: Category) => void;
   onGmailLabel: (c: Category) => void;
@@ -68,6 +71,11 @@ export function Sidebar(p: Props) {
           </span>
         ))}
       </p>
+
+      <button onClick={p.onCompose} className={cn(row, "shrink-0 font-medium hover:bg-muted/60")}>
+        <Pencil className="size-3.5" /> compose
+        <kbd className="ml-auto rounded-[3px] border bg-muted px-1 text-[11px] leading-4 text-foreground/80 max-md:hidden">C</kbd>
+      </button>
 
       <nav aria-label="Categories" className="scroll-thin min-h-0 flex-1 overflow-y-auto">
         {items.map((it) => {
@@ -163,6 +171,9 @@ export function Sidebar(p: Props) {
             <KeyRound className="size-3.5" /> add composio api key
           </button>
         )}
+        <button onClick={p.onAgents} className={cn(row, "text-muted-foreground hover:bg-muted/60 hover:text-foreground")}>
+          <Plug className="size-3.5" /> ai agents (mcp)
+        </button>
         <button
           onClick={async () => {
             await createClient().auth.signOut();
