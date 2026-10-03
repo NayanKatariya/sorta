@@ -62,7 +62,8 @@ export function AgentsPanel({ fresh, onFresh }: { fresh: FreshSecret | null; onF
   }, []);
 
   return (
-    <div className="grid gap-4">
+    // minmax(0, 1fr): a long snippet line scrolls inside its <pre> instead of widening the whole dialog.
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <p className="text-xs text-muted-foreground">
         Let an AI agent work with your mail over MCP. It signs in with an access token you create here and can only do what you allow. Revoke a
         token and the agent loses access straight away.
@@ -289,8 +290,8 @@ function Snippets({ url, token }: { url: string; token?: string }) {
   ];
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
+    <div className="min-w-0 space-y-2">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium">Connect a client</p>
         <span className="flex min-w-0 items-center gap-1.5">
           <code className="truncate rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs">{url}</code>
@@ -306,7 +307,7 @@ function Snippets({ url, token }: { url: string; token?: string }) {
           ))}
         </TabsList>
         {clients.map((c) => (
-          <TabsContent key={c.id} value={c.id} className="space-y-2">
+          <TabsContent key={c.id} value={c.id} className="min-w-0 space-y-2">
             <p className="text-xs text-muted-foreground">{c.note}</p>
             <div className="relative">
               <pre className="scroll-thin overflow-x-auto rounded-lg border bg-muted/40 p-3 pr-10 font-mono text-xs leading-relaxed">{c.code}</pre>

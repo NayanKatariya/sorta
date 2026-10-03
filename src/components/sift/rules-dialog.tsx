@@ -51,20 +51,20 @@ export function RulesDialog({
           <DialogTitle>Settings</DialogTitle>
           <DialogDescription>Changes apply right away.</DialogDescription>
         </DialogHeader>
-        <Tabs value={tab} onValueChange={(v) => onTab(v as SettingsTab)}>
+        <Tabs value={tab} onValueChange={(v) => onTab(v as SettingsTab)} className="min-w-0">
           <TabsList className="w-full">
             <TabsTrigger value="sweep">Sweep rules</TabsTrigger>
             <TabsTrigger value="sending">Sending</TabsTrigger>
             <TabsTrigger value="agents">AI agents</TabsTrigger>
           </TabsList>
-          <TabsContent value="sweep" className="pt-2">
+          <TabsContent value="sweep" className="min-w-0 pt-2">
             <p className="mb-4 text-xs text-muted-foreground">Choose what counts as junk. Changes don&apos;t need a re-scan.</p>
             <RulesForm {...form} />
           </TabsContent>
-          <TabsContent value="sending" className="pt-2">
+          <TabsContent value="sending" className="min-w-0 pt-2">
             <SendingForm state={form.state} onSettings={form.onSettings} />
           </TabsContent>
-          <TabsContent value="agents" className="pt-2">
+          <TabsContent value="agents" className="min-w-0 pt-2">
             <AgentsPanel fresh={fresh} onFresh={setFresh} />
           </TabsContent>
         </Tabs>

@@ -36,7 +36,7 @@ export function SendingForm({ state, onSettings }: { state: ClientState; onSetti
   );
 
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <p className="text-xs text-muted-foreground">
         Used when you write a new email, and for every email an AI agent sends for you. You can still change them on each message.
       </p>
