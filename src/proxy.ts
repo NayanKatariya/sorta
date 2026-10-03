@@ -31,6 +31,14 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApi = pathname.startsWith("/api/");
 
+  // The MCP endpoint is for AI agents, not browsers: it takes a bearer token and never looks at cookies, so
+  // there is no session to bounce them to /login for, and no ambient browser credential for a cross-site page
+  // to ride on (the Origin check below exists for that). The route authenticates every call itself. Exact path only.
+  if (pathname === "/api/mcp") return NextResponse.next({ request });
+
+  // OAuth discovery probes (an MCP client does this after a 401). Sorta has no OAuth: a clean 404, not a redirect to the HTML login page.
+  if (pathname.startsWith("/.well-known/oauth-")) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
   // Cookie auth + state-changing requests: refuse ones another site made the browser send.
   if (isApi && !["GET", "HEAD", "OPTIONS"].includes(request.method) && !sameSite(request)) {
     return NextResponse.json({ error: "Cross-origin request refused" }, { status: 403 });

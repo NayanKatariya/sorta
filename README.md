@@ -48,6 +48,42 @@ Each filter's counts are computed within the other. For example, `Job hunt` + `u
 - **Corrections stick**: "Move to" files an email by hand, and Jev won't re-sort it. "Not junk" means it's never swept.
 - The URL keeps both filters, the view and the open email (`?c=…&s=…&v=…&m=…`).
 
+## Connect AI agents (MCP)
+
+Sorta runs a remote [MCP](https://modelcontextprotocol.io) server (Streamable HTTP, stateless) at `<your-app-url>/api/mcp`, so Claude, Codex, Cursor and other agents can read your mail and send or reply as you.
+
+1. Create a personal access token (`POST /api/mcp-tokens` with `{"name": "Claude Code", "scopes": ["read", "send"]}`, or in the app's AI agents panel). It looks like `sorta_pat_...` and is shown **once**; only its SHA-256 is stored. Give it `read` to browse mail, plus `send` to let the agent send and reply. Tokens can expire and be revoked at any time (`DELETE /api/mcp-tokens?id=...`); you can have up to 10 active.
+2. Add the server to your agent:
+
+```bash
+# Claude Code
+claude mcp add --transport http sorta https://YOUR-APP/api/mcp --header "Authorization: Bearer sorta_pat_..."
+```
+
+```toml
+# Codex: ~/.codex/config.toml (export SORTA_TOKEN=sorta_pat_... first)
+[mcp_servers.sorta]
+url = "https://YOUR-APP/api/mcp"
+bearer_token_env_var = "SORTA_TOKEN"
+```
+
+```json
+// Cursor: ~/.cursor/mcp.json (or .cursor/mcp.json in a project)
+{ "mcpServers": { "sorta": { "url": "https://YOUR-APP/api/mcp", "headers": { "Authorization": "Bearer sorta_pat_..." } } } }
+```
+
+Any other client that speaks Streamable HTTP: POST JSON-RPC to the URL with the header `Authorization: Bearer sorta_pat_...`. Missing or bad tokens get `401` with a `WWW-Authenticate` header.
+
+| Tool | Scope | What it does |
+|---|---|---|
+| `list_accounts`, `list_categories`, `get_send_settings` | read | Connected mailboxes, your categories with counts, and your sending defaults |
+| `list_emails`, `search_emails` | read | Synced mail filtered by category, account, folder, unread; paged with `limit`/`offset`. Search matches sender, subject and preview |
+| `get_thread` | read | A whole conversation from Gmail, with attachment names and types |
+| `send_email` | send | New message with `to`, `cc`, `bcc`, `subject`, `body`, optional `from` account and `attachments` (`[{filename, mimeType, contentBase64}]`) |
+| `reply_to_thread` | send | Reply by `emailId` (or `threadId` + `accountId`), with `replyAll`, `cc`, `bcc` and attachments |
+
+Your default CC/BCC and signature from Settings are applied to every send an agent makes. Attachments are capped at 4 MB per message (less in practice on Vercel, whose request limit is 4.5 MB). Tokens act as you: revoke any you no longer use.
+
 ## Setup
 
 Sorta is multi-user: each person signs in, and brings their own Composio key for Gmail. Data lives in

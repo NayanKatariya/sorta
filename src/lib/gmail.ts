@@ -260,3 +260,64 @@ export async function getAttachment(ctx: Ctx, accountId: string, messageId: stri
   if (!data.file?.s3url) throw new Error("Gmail returned no file for this attachment.");
   return { url: data.file.s3url, mimeType: data.file.mimetype ?? "application/octet-stream", name: data.file.name ?? filename };
 }
+
+/** Who a reply to a conversation goes to, read from the headers of its newest message. */
+export type ReplyContext = {
+  /** Where a plain reply goes: the sender's Reply-To (or From), or the recipients when the user wrote last. */
+  to: string[];
+  /** Everyone else on the last message, for reply-all. */
+  others: string[];
+  cc: string[];
+  subject: string;
+};
+
+/** Splits an address header ("A <a@x.com>, b@y.com") into its parts, ignoring commas inside quotes or <>. */
+export function splitAddresses(list: string | undefined): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let quoted = false;
+  let angle = false;
+  for (const ch of list ?? "") {
+    if (ch === '"') quoted = !quoted;
+    else if (!quoted && ch === "<") angle = true;
+    else if (!quoted && ch === ">") angle = false;
+    if (ch === "," && !quoted && !angle) {
+      out.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  out.push(cur);
+  return out.map((a) => a.trim()).filter(Boolean);
+}
+
+/** The bare lower-cased address inside "Name <a@x.com>", or null when there isn't one. */
+export function bareAddress(raw: string): string | null {
+  const m = /<([^<>\s]+@[^<>\s]+)>/.exec(raw) ?? /^\s*([^<>\s,;"]+@[^<>\s,;"]+)\s*$/.exec(raw);
+  return m ? m[1].toLowerCase() : null;
+}
+
+export async function fetchReplyContext(ctx: Ctx, account: Account, threadId: string): Promise<ReplyContext> {
+  const data = await executeTool<{ messages?: RawThreadMessage[] }>(ctx, "GMAIL_FETCH_MESSAGE_BY_THREAD_ID", { thread_id: threadId }, account.id, account.userId);
+  const msgs = (data.messages ?? []).sort((a, b) => (a.messageTimestamp ?? "").localeCompare(b.messageTimestamp ?? ""));
+  if (!msgs.length) throw new Error("That conversation wasn't found in Gmail.");
+  const mine = (m: RawThreadMessage) =>
+    Boolean(m.labelIds?.includes("SENT")) || bareAddress(header(m.payload ?? {}, "from") ?? m.sender ?? "") === account.email.toLowerCase();
+  // Like Gmail: follow the newest message. When the user wrote it, address its recipients; when it has none
+  // (a note to self), fall back to the newest message from someone else.
+  const newest = msgs[msgs.length - 1];
+  const lastForeign = [...msgs].reverse().find((m) => !mine(m));
+  const recipients = (m: RawThreadMessage) => splitAddresses((m.payload ? header(m.payload, "to") : undefined) ?? m.to);
+  const last = mine(newest) && (recipients(newest).length || !lastForeign) ? newest : (lastForeign ?? newest);
+  const h = (name: string) => (last.payload ? header(last.payload, name) : undefined);
+  const from = splitAddresses(h("from") ?? last.sender);
+  const replyTo = splitAddresses(h("reply-to"));
+  const to = splitAddresses(h("to") ?? last.to);
+  const cc = splitAddresses(h("cc"));
+  const wroteLast = mine(last);
+  return {
+    to: wroteLast ? to : replyTo.length ? replyTo : from,
+    others: wroteLast ? [] : to,
+    cc,
+    subject: decodeEntities(h("subject") ?? last.subject ?? ""),
+  };
+}

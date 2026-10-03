@@ -11,6 +11,8 @@ import {
   FolderInput,
   Mail,
   MailOpen,
+  Reply,
+  ReplyAll,
   Shield,
   ShieldCheck,
   Trash2,
@@ -34,6 +36,7 @@ import { JUNK_KIND_LABELS, type Category, type ClientState, type ThreadMessage }
 import { cn } from "@/lib/utils";
 import { SenderTile } from "./avatar";
 import { fullDate, listDate, priorityLabel, threadIdsOf, threadKey, type Row, type SenderGroup } from "./model";
+import { ReplyBox } from "./reply-box";
 import { json } from "./use-sift";
 
 type Actions = {
@@ -51,8 +54,15 @@ export function MailDetail({
   email,
   state,
   onSelectEmail,
+  replySignal,
   ...act
-}: { email: Row; state: ClientState; onSelectEmail: (id: string) => void } & Actions) {
+}: {
+  email: Row;
+  state: ClientState;
+  onSelectEmail: (id: string) => void;
+  /** Bumped by the R / Shift+R shortcuts to open the reply box. */
+  replySignal?: { n: number; all: boolean };
+} & Actions) {
   const a = email.analysis;
   const addr = senderAddress(email.from);
   const isProtected = state.protectedSenders.includes(addr);
@@ -61,6 +71,18 @@ export function MailDetail({
   const thread = threadIdsOf(state.emails, email.id);
   const fromSender = state.emails.filter((e) => threadKey(e) !== threadKey(email) && senderAddress(e.from) === addr);
   const unread = state.emails.some((e) => thread.includes(e.id) && e.labelIds.includes("UNREAD"));
+
+  // The reply box belongs to one conversation; opening another email closes it. `version` reloads the thread after a send.
+  const [reply, setReply] = useState<{ key: string; all: boolean } | null>(null);
+  const [version, setVersion] = useState(0);
+  const canReply = state.accounts.some((x) => x.id === email.accountId && x.status === "ACTIVE");
+  const [seenSignal, setSeenSignal] = useState(replySignal?.n ?? 0);
+  if (replySignal && replySignal.n !== seenSignal) {
+    setSeenSignal(replySignal.n);
+    // r / R do nothing for a disconnected mailbox, like the disabled buttons.
+    if (canReply) setReply({ key: threadKey(email), all: replySignal.all });
+  }
+  const replying = reply && reply.key === threadKey(email) ? reply : null;
 
   return (
     <article className="@container flex h-full min-h-0 flex-col" aria-label={email.subject}>
@@ -137,7 +159,33 @@ export function MailDetail({
 
           {a ? <JevRead email={email} category={category} /> : <p className="mt-6 text-sm text-muted-foreground">Jev hasn&apos;t read this one yet. Sync to analyze it.</p>}
 
-          <Conversation email={email} size={thread.length} />
+          <Conversation email={email} size={thread.length} version={version} />
+
+          {replying ? (
+            <ReplyBox
+              // Switching between Reply and Reply all keeps what was typed.
+              key={replying.key}
+              email={email}
+              state={state}
+              all={replying.all}
+              onAll={(all) => setReply({ key: replying.key, all })}
+              onClose={() => setReply(null)}
+              onSent={() => {
+                forgetThread(thread);
+                setReply(null);
+                setVersion((v) => v + 1);
+              }}
+            />
+          ) : (
+            <div className="mt-6 flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" disabled={!canReply} onClick={() => setReply({ key: threadKey(email), all: false })} title={canReply ? undefined : "This mailbox is disconnected"}>
+                <Reply /> Reply <Kbd className="ml-1 max-sm:hidden">R</Kbd>
+              </Button>
+              <Button variant="outline" size="sm" disabled={!canReply} onClick={() => setReply({ key: threadKey(email), all: true })} title={canReply ? undefined : "This mailbox is disconnected"}>
+                <ReplyAll /> Reply all
+              </Button>
+            </div>
+          )}
 
           {fromSender.length > 0 && (
             <section className="mt-10" aria-labelledby="more-from">
@@ -176,8 +224,13 @@ export function MailDetail({
 // Threads already opened this session show instantly; keyed by message and thread size so a new reply refetches.
 const threadCache = new Map<string, ThreadMessage[]>();
 
-function Conversation({ email, size }: { email: Row; size: number }) {
-  const key = `${email.id}:${size}`;
+/** Drops cached copies of a conversation (opened from any of its messages), so it shows a reply just sent. */
+function forgetThread(ids: string[]) {
+  for (const key of threadCache.keys()) if (ids.includes(key.slice(0, key.indexOf(":")))) threadCache.delete(key);
+}
+
+function Conversation({ email, size, version }: { email: Row; size: number; version: number }) {
+  const key = `${email.id}:${size}:${version}`;
   const [result, setResult] = useState<{ key: string; messages?: ThreadMessage[]; error?: string } | null>(null);
 
   useEffect(() => {
@@ -621,7 +674,9 @@ export function DetailIdle({ state }: { state: ClientState }) {
     ["E", "Move to Trash"],
     ["U", "Mark read / unread"],
     ["/", "Search or ask Jev"],
-    ["C", "New category"],
+    ["C", "Compose"],
+    ["R", "Reply"],
+    ["⇧N", "New category"],
     ["⌘ K", "All commands"],
   ];
   return (

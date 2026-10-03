@@ -9,8 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { AgentsPanel, type FreshSecret } from "./agents-panel";
+import { SendingForm } from "./sending-settings";
 import { JUNK_KINDS, JUNK_KIND_LABELS, type ClientState, type JunkKind, type Settings } from "@/lib/types";
+
+export type SettingsTab = "sweep" | "sending" | "agents";
 
 type Props = {
   open: boolean;
@@ -30,15 +35,39 @@ const HINTS: Partial<Record<JunkKind, string>> = {
   social_notification: "Likes, follows, 'people you may know'",
 };
 
-export function RulesDialog({ open, onOpenChange, ...form }: Props) {
+export function RulesDialog({
+  open,
+  onOpenChange,
+  tab,
+  onTab,
+  ...form
+}: Props & { tab: SettingsTab; onTab: (tab: SettingsTab) => void }) {
+  // A new token's secret can't be fetched again, so it's kept here, outliving the tab and the dialog.
+  const [fresh, setFresh] = useState<FreshSecret | null>(null);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scroll-thin max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="scroll-thin max-h-[90dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Sweep rules</DialogTitle>
-          <DialogDescription>Choose what counts as junk. Changes apply right away and don&apos;t need a re-scan.</DialogDescription>
+          <DialogTitle>Settings</DialogTitle>
+          <DialogDescription>Changes apply right away.</DialogDescription>
         </DialogHeader>
-        <RulesForm {...form} />
+        <Tabs value={tab} onValueChange={(v) => onTab(v as SettingsTab)}>
+          <TabsList className="w-full">
+            <TabsTrigger value="sweep">Sweep rules</TabsTrigger>
+            <TabsTrigger value="sending">Sending</TabsTrigger>
+            <TabsTrigger value="agents">AI agents</TabsTrigger>
+          </TabsList>
+          <TabsContent value="sweep" className="pt-2">
+            <p className="mb-4 text-xs text-muted-foreground">Choose what counts as junk. Changes don&apos;t need a re-scan.</p>
+            <RulesForm {...form} />
+          </TabsContent>
+          <TabsContent value="sending" className="pt-2">
+            <SendingForm state={form.state} onSettings={form.onSettings} />
+          </TabsContent>
+          <TabsContent value="agents" className="pt-2">
+            <AgentsPanel fresh={fresh} onFresh={setFresh} />
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );

@@ -48,6 +48,10 @@ type StateRow = {
   sync_started_at: string | null;
   total_swept: number;
   onboarded_at: string | null;
+  default_from_account: string | null;
+  default_cc: string[];
+  default_bcc: string[];
+  signature: string;
 };
 type AccountRow = { id: string; composio_user_id: string; email: string; status: string; enabled: boolean; trigger_id: string | null };
 type CategoryRow = { id: string; name: string; description: string; color: string; gmail_labels: Record<string, string>; created_at: string };
@@ -165,7 +169,7 @@ const fromAnalysis = (userId: string, emailId: string, a: Analysis) => ({
 
 /** The user's settings row, created with defaults on first use. */
 async function stateRow({ db, userId }: Ctx): Promise<StateRow> {
-  const cols = "sweep_kinds, threshold, include_spam_folder, fetch_limit, protected_senders, last_sweep, last_sync_at, sync_started_at, total_swept, onboarded_at";
+  const cols = "sweep_kinds, threshold, include_spam_folder, fetch_limit, protected_senders, last_sweep, last_sync_at, sync_started_at, total_swept, onboarded_at, default_from_account, default_cc, default_bcc, signature";
   const found = check(await db.from("user_state").select(cols).eq("user_id", userId).maybeSingle(), "reading settings");
   if (found) return found as StateRow;
   const created = await db.from("user_state").upsert({ user_id: userId }, { onConflict: "user_id", ignoreDuplicates: true });
@@ -180,6 +184,10 @@ const settingsOf = (r: StateRow): Settings => ({
   threshold: r.threshold,
   includeSpamFolder: r.include_spam_folder,
   fetchLimit: r.fetch_limit,
+  defaultFromAccount: r.default_from_account,
+  defaultCc: r.default_cc,
+  defaultBcc: r.default_bcc,
+  signature: r.signature,
 });
 
 export async function readSettings(ctx: Ctx) {

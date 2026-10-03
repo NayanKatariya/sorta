@@ -27,11 +27,13 @@ import { toast } from "sonner";
 import type { Account, Category } from "@/lib/types";
 import { CategoryDialog } from "./category-dialog";
 import { CommandMenu } from "./command-menu";
+import { ComposeDialog } from "./compose-dialog";
+import { hasReplyDraft } from "./reply-box";
 import { ComposioDialog, type ComposioStep } from "./composio-dialog";
 import { MailDetail, SenderDetail } from "./mail-detail";
 import { CardsView, EmptyView, ListView, Pager, SendersView } from "./mail-views";
 import { collapseThreads, groupSenders, inCollection, inStatus, STATUSES, threadIdsOf, threadKey, type Collection, type Layout, type Status } from "./model";
-import { RulesDialog } from "./rules-dialog";
+import { RulesDialog, type SettingsTab } from "./rules-dialog";
 import { Sidebar } from "./sidebar";
 import { Header, StatusBar, Tabs } from "./toolbar";
 import { useSift } from "./use-sift";
@@ -65,6 +67,13 @@ function fromUrl() {
   };
 }
 
+/** True (and says why) while a reply has unsent text or files, which leaving the conversation would lose. */
+function keepDraft() {
+  if (!hasReplyDraft()) return false;
+  toast("Send or discard your reply first.", { id: "reply-draft" });
+  return true;
+}
+
 export function AppShell() {
   const sift = useSift();
   const { state, busy } = sift;
@@ -84,6 +93,15 @@ export function AppShell() {
   const [jev, setJev] = useState<{ q: string; scores: Record<string, number> } | null>(null);
   const [categoryDialog, setCategoryDialog] = useState<Partial<Category> | null>(null);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("sweep");
+  const [composing, setComposing] = useState(false);
+  /** Bumped by R / Shift+R; the open email's reply box listens. */
+  const [replySignal, setReplySignal] = useState({ n: 0, all: false });
+  const openSettings = (tab: SettingsTab = "sweep") => {
+    setSettingsTab(tab);
+    setRulesOpen(true);
+    setMobileNav(false);
+  };
   const [commandOpen, setCommandOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Category | null>(null);
   const [confirmDisconnect, setConfirmDisconnect] = useState<Account | null>(null);
@@ -199,10 +217,12 @@ export function AppShell() {
     resetSearch();
   };
   const openEmail = (id: string) => {
+    if (id !== selectedId && keepDraft()) return;
     setSelectedSender(null);
     setSelectedId(id);
   };
   const openSender = (addr: string) => {
+    if (keepDraft()) return;
     setSelectedId(null);
     setSelectedSender(addr);
   };
@@ -247,7 +267,9 @@ export function AppShell() {
         return;
       }
       const t = e.target as HTMLElement;
-      if (mod || t.closest("input, textarea, [contenteditable], [role=dialog]")) return;
+      if (mod || t.closest("input, textarea, [contenteditable], [role=dialog], [data-compose]")) return;
+      // Moving to another email or closing this one would throw an unsent reply away.
+      if (["j", "k", "ArrowDown", "ArrowUp", "e", "#", "Escape"].includes(e.key) && keepDraft()) return;
 
       if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
         e.preventDefault();
@@ -300,15 +322,24 @@ export function AppShell() {
           searchRef.current?.focus();
           break;
         case "N":
-        case "c":
           e.preventDefault(); // don't type the key into the dialog's autofocused field
           setCategoryDialog({});
+          break;
+        case "c":
+          e.preventDefault();
+          setComposing(true);
+          break;
+        case "r":
+        case "R":
+          if (!selected) break;
+          e.preventDefault();
+          setReplySignal((s) => ({ n: s.n + 1, all: e.key === "R" }));
           break;
         case "v":
           setLayout((l) => (l === "list" ? "cards" : l === "cards" ? "senders" : "list"));
           break;
         case ",":
-          setRulesOpen(true);
+          openSettings();
           break;
         case "Escape":
           setSelectedId(null);
@@ -341,11 +372,12 @@ export function AppShell() {
     onNewCategory: () => setCategoryDialog({}),
   };
   const closeDetail = () => {
+    if (keepDraft()) return;
     setSelectedId(null);
     setSelectedSender(null);
   };
   const detail = selected ? (
-    <MailDetail email={selected} state={state} {...detailActions} onSelectEmail={openEmail} onClose={closeDetail} />
+    <MailDetail email={selected} state={state} {...detailActions} replySignal={replySignal} onSelectEmail={openEmail} onClose={closeDetail} />
   ) : senderGroup ? (
     <SenderDetail group={senderGroup} state={state} {...detailActions} onSelectEmail={openEmail} onClose={closeDetail} />
   ) : null;
@@ -399,6 +431,11 @@ export function AppShell() {
         setMobileNav(false);
       }}
       onNewCategory={() => setCategoryDialog({})}
+      onCompose={() => {
+        setComposing(true);
+        setMobileNav(false);
+      }}
+      onAgents={() => openSettings("agents")}
       onEditCategory={(c) => setCategoryDialog(c)}
       onDeleteCategory={setConfirmDelete}
       onGmailLabel={(c) => sift.pushToGmail(c.id)}
@@ -463,6 +500,7 @@ export function AppShell() {
             onSync={sift.sync}
             onSweep={() => sift.sweep(sweepIds)}
             onToggleSidebar={toggleSidebar}
+            onCompose={() => setComposing(true)}
           />
           <Tabs status={status} counts={statusCounts} layout={layout} onStatus={pickStatus} onLayout={setLayout} />
           {!state.jevConfigured && (
@@ -484,7 +522,8 @@ export function AppShell() {
         onCommand={() => setCommandOpen(true)}
         onToggleSidebar={toggleSidebar}
         onNewCategory={() => setCategoryDialog({})}
-        onRules={() => setRulesOpen(true)}
+        onCompose={() => setComposing(true)}
+        onRules={() => openSettings()}
       />
 
       {!desktop && (
@@ -519,7 +558,10 @@ export function AppShell() {
         }}
         onUndo={sift.undo}
         onNewCategory={() => setCategoryDialog({})}
-        onRules={() => setRulesOpen(true)}
+        onCompose={() => setComposing(true)}
+        onRules={() => openSettings()}
+        onSending={() => openSettings("sending")}
+        onAgents={() => openSettings("agents")}
         onAskJev={askJev}
       />
 
@@ -554,7 +596,8 @@ export function AppShell() {
         onSaveAccounts={sift.setAccounts}
         onConnect={sift.connectAccount}
       />
-      <RulesDialog open={rulesOpen} onOpenChange={setRulesOpen} state={state} onSettings={sift.updateSettings} onProtect={sift.protect} />
+      {composing && <ComposeDialog open onOpenChange={(o) => !o && setComposing(false)} state={state} />}
+      <RulesDialog open={rulesOpen} onOpenChange={setRulesOpen} tab={settingsTab} onTab={setSettingsTab} state={state} onSettings={sift.updateSettings} onProtect={sift.protect} />
 
       <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
         <AlertDialogContent>
